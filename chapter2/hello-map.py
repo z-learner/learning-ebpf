@@ -3,34 +3,45 @@ from bcc import BPF
 from time import sleep
 
 program = r"""
-BPF_HASH(counter_table);
+
+
+struct data_t {
+   u64 counter;
+   char comm[16];
+};
+
+BPF_HASH(counter_table, u32, struct data_t);
+
+
 
 int hello(void *ctx) {
-   u64 uid;
-   u64 counter = 0;
-   u64 *p;
+   u32 pid;
+   struct data_t data = {};
 
-   uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
-   p = counter_table.lookup(&uid);
+   pid = bpf_get_current_pid_tgid() >> 32;
+
+   bpf_get_current_comm(&data.comm, sizeof(data.comm));
+
+   struct data_t *p = counter_table.lookup(&pid);
    if (p != 0) {
-      counter = *p;
+      data.counter = p->counter;
    }
-   counter++;
-   counter_table.update(&uid, &counter);
+   
+   data.counter++;
+   
+   counter_table.update(&pid, &data);
    return 0;
 }
 """
 
 b = BPF(text=program)
+
 syscall = b.get_syscall_fnname("execve")
 b.attach_kprobe(event=syscall, fn_name="hello")
-
-# Attach to a tracepoint that gets hit for all syscalls 
-# b.attach_raw_tracepoint(tp="sys_enter", fn_name="hello")
 
 while True:
     sleep(2)
     s = ""
-    for k,v in b["counter_table"].items():
-        s += f"ID {k.value}: {v.value}\t"
+    for k, v in b["counter_table"].items():
+        s += f"PID {k.value}: Comm: {v.comm.decode('utf-8', 'replace')}, Count: {v.counter}\n"
     print(s)
