@@ -33,6 +33,7 @@ b.attach_kprobe(event=syscall, fn_name="hello")
  
 def print_event(cpu, data, size):  
    data = b["output"].event(data)
+   print(f"Received data from CPU {cpu}, size {size}")
    print(f"{data.pid} {data.uid} {data.command.decode()} {data.message.decode()}")
  
 b["output"].open_perf_buffer(print_event) 
